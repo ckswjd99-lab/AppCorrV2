@@ -18,6 +18,7 @@ Run (from repo root, `openvla` conda env, LIBERO software-EGL env vars set):
 
 import argparse
 import copy
+import json
 import math
 import multiprocessing
 import queue as queue_mod
@@ -65,6 +66,10 @@ def parse_args():
                               "(OpenVLAExecutor._filter_by_server_pscore); unset = no filtering. "
                               "Units match progressive_vla_libero_eval.py's attnthresh_<N> (real "
                               "value, e.g. 200e-6 for the validated attnthresh_200 setting).")
+    parser.add_argument("--out", type=str, default=None,
+                         help="Path of a JSONL file that receives one line per finished episode "
+                              "(appended as it lands) plus a final 'summary' line per schedule. "
+                              "Unset = print only.")
     parser.add_argument("--sdpa-query-bucket-size", type=int, default=0,
                          help="Pad CORRECT_FORWARD's query-set size up to a multiple of this "
                               "(OpenVLAProgressiveModel._bucketize_token_idx); 0 = disabled. "
@@ -112,6 +117,17 @@ def make_config(args, schedule: str):
             "text": "",
         },
     )
+
+
+def _append_jsonl(path, record):
+    """Append one record to the JSONL results file (no-op when --out is unset). Written per
+    episode so a crash/reboot keeps everything that already landed."""
+    if not path:
+        return
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+        f.flush()
 
 
 def request_action(encoder, config, frame_np, text, sched_q, result_q, timeout):
@@ -249,8 +265,22 @@ def main():
                     outcomes.append((task_id, success))
                     print(f"    task {task_id} trial {trial + 1}: success={success} steps={steps} wall={time.time() - t0:.1f}s")
                     sys.stdout.flush()
+                    _append_jsonl(args.out, {
+                        "kind": "episode", "suite": args.task_suite, "schedule": schedule,
+                        "task_id": task_id, "trial": trial, "init_state_idx": args.trial_start + trial,
+                        "success": bool(success), "steps": int(steps), "wall_s": round(time.time() - t0, 1),
+                        "grouping": args.grouping, "num_groups": args.num_groups,
+                        "frontiers": args.frontiers, "max_steps": args.max_steps,
+                    })
             results[schedule] = outcomes
             timing[schedule] = {k: (float(np.mean(v)), len(v)) for k, v in op_times.items()}
+            _append_jsonl(args.out, {
+                "kind": "summary", "suite": args.task_suite, "schedule": schedule,
+                "n": len(outcomes), "successes": int(sum(s for _, s in outcomes)),
+                "success_rate": float(sum(s for _, s in outcomes)) / max(1, len(outcomes)),
+                "op_time_ms": {k: [v[0] * 1000, v[1]] for k, v in timing[schedule].items()},
+                "correction": dict(correction_stats),
+            })
             correction[schedule] = dict(correction_stats)
             group_timing[schedule] = {g: (float(np.mean(v)), len(v)) for g, v in correct_by_group.items()}
     finally:
