@@ -66,6 +66,8 @@ def parse_args():
                               "(OpenVLAExecutor._filter_by_server_pscore); unset = no filtering. "
                               "Units match progressive_vla_libero_eval.py's attnthresh_<N> (real "
                               "value, e.g. 200e-6 for the validated attnthresh_200 setting).")
+    parser.add_argument("--device", type=str, default="cuda:0",
+                        help="torch device for the OpenVLA server model (MuJoCo rendering is EGL/llvmpipe, unaffected)")
     parser.add_argument("--out", type=str, default=None,
                          help="Path of a JSONL file that receives one line per finished episode "
                               "(appended as it lands) plus a final 'summary' line per schedule. "
@@ -100,7 +102,7 @@ def make_config(args, schedule: str):
     return ExperimentConfig(
         exp_id=f"vla_{schedule}",
         model_name="openvla",
-        device="cuda:0",
+        device=args.device,
         dataset_name=args.task_suite,
         dataset_kwargs={"checkpoint": args.checkpoint, "unnorm_key": args.task_suite},
         batch_size=1,
