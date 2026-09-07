@@ -119,7 +119,7 @@ SPEC = [
         ("DocVQA (ANLS)",          ("gemma3", "docvqa"),      ("inproc", "gemma3", "docvqa")),
         ("GQA testdev (Exact Match)", ("gemma3", "gqa"),      ("inproc", "gemma3", "gqa")),
         ("MMMU val (Acc.)",        ("gemma3", "mmmu"),        ("inproc", "gemma3", "mmmu")),
-        ("VSR zeroshot (Acc.)",    ("gemma3", "vsr"),         None),
+        ("VSR zeroshot (Acc.)",    ("gemma3", "vsr"),         ("inproc", "gemma3", "vsr")),
     ]),
     # Qwen3.5's arm is STREAMING (vision approx/correct + chunked LLM prefill), not interleaved
     # correction: it progressively recomputes 100% of tokens and has no keep-rate knob -- the
@@ -136,7 +136,7 @@ SPEC = [
         ("GQA testdev (Exact Match)", ("ov2", "gqa"),      ("inproc", "ov2", "gqa")),
         ("MMMU val (Acc.)",        ("ov2", "mmmu"),        ("inproc", "ov2", "mmmu")),
         ("RefCOCO val (Acc.@0.5)", ("ov2", "refcoco"),     ("inproc", "ov2", "refcoco")),
-        ("VSR zeroshot (Acc.)",    ("ov2", "vsr"),         None),
+        ("VSR zeroshot (Acc.)",    ("ov2", "vsr"),         ("inproc", "ov2", "vsr")),
         ("V*Bench (Acc.)",         None, ("inproc", "ov2", "vstar")),
     ]),
     ("Qwen2.5-VL (33.5B)$^\\S$", [
@@ -144,8 +144,12 @@ SPEC = [
         ("RefCOCO val (mIoU)",        None, ("inproc", "qwen25vl_32b", "refcoco")),
         ("GQA testdev (Exact Match)", None, ("inproc", "qwen25vl_32b", "gqa")),
         ("RealWorldQA (Acc.)",        None, ("inproc", "qwen25vl_32b", "realworldqa")),
-        ("MMVP (Acc.)",               None, None),
-        ("CV-Bench (Acc.)",           None, None),
+        ("MMVP (Acc.)",               None, ("inproc", "qwen25vl_32b", "mmvp")),
+        ("CV-Bench (Acc.)",           None, ("inproc", "qwen25vl_32b", "cvbench")),
+        # VisDrone: neither accuracy nor FLOPs exist for this model. The spec hands the encoder
+        # the NATIVE frame (270x480 etc.), which ProgressiveLPyramidPolicy rejects (not a multiple
+        # of the 28px merge patch) -- the fix is a resize policy that would also define the
+        # accuracy arms, so it is not a fill (2026-09-07).
         ("VisDrone Count (Exact Acc.)", None, None),
         ("VisDrone Det (Acc.@0.5)",     None, None),
         ("V*Bench (Acc.)",              None, ("inproc", "qwen25vl_32b", "vstar")),
@@ -153,7 +157,7 @@ SPEC = [
     ("Qwen3.5-MoE (35B-A3B)$^\\dagger$", [
         ("ChartQA (Relaxed Acc.)", None, ("inproc", "qwen35_moe", "chartqa")),
         ("RealWorldQA (Acc.)",     None, ("inproc", "qwen35_moe", "realworldqa")),
-        ("VSR zeroshot (Acc.)",    None, None),
+        ("VSR zeroshot (Acc.)",    None, ("inproc", "qwen35_moe", "vsr")),
         ("MMVP (Acc.)",            None, ("inproc", "qwen35_moe", "mmvp")),
         ("CV-Bench (Acc.)",        None, ("inproc", "qwen35_moe", "cvbench")),
         # Resolution-sensitive track (2026-08-31, B200 box): accuracy is measured under the
@@ -235,11 +239,16 @@ SPEC = [
         ("VisDrone Det (Acc.@0.5)",     None, ("inproc", "qwen35_122b", "visdrone_det")),
         ("V*Bench (Acc.)",              None, ("inproc", "qwen35_122b", "vstar")),
     ]),
+    # OpenVLA FLOPs (2026-09-07): AppCorr-openvla/analysis/experiments/flops_report_openvla.py,
+    # in-process, the campaign's exact schedule (frontiers 32x4, sequential grouping, cumulative
+    # vision correction). Backbone = both towers + projector + 32 Llama layers; the 7-token
+    # action decode is excluded like every other model's decode. Only the streaming (k=1.00)
+    # arm exists for the VLA, so the one-shot columns stay "--" by construction.
     ("OpenVLA (7B)", [
-        ("LIBERO-Spatial (Success Rate)", None, None),
-        ("LIBERO-Object (Success Rate)",  None, None),
-        ("LIBERO-Goal (Success Rate)",    None, None),
-        ("LIBERO-Long (Success Rate)",    None, None),
+        ("LIBERO-Spatial (Success Rate)", None, ("inproc", "openvla", "libero_spatial")),
+        ("LIBERO-Object (Success Rate)",  None, ("inproc", "openvla", "libero_object")),
+        ("LIBERO-Goal (Success Rate)",    None, ("inproc", "openvla", "libero_goal")),
+        ("LIBERO-Long (Success Rate)",    None, ("inproc", "openvla", "libero_10")),
     ]),
     ("DINOv3 (7B)", [
         (r"ImageNet-1k (Top-1 $\uparrow$)", None, ("offload", "dinov3_imagenet")),
@@ -272,8 +281,11 @@ SPEC = [
         # model where interleaving costs real accuracy (staleness 5.76pp > selection 3.06pp at
         # keep=0.50); this row shows the trade the g=4 row hides. Measured on the full 5000-image
         # split, 2026-08-26 (docs/memo/openclip_staleness_decomposition.md).
-        ("COCO Ret. one-shot g=1 (i2t R@1)", None, None),
-        ("COCO Ret. one-shot g=1 (t2i R@1)", None, None),
+        # FLOPs: the same worker accounting with num_groups=1 (openclip_cocoret_g1_k0.50.json,
+        # 2026-09-07); the ceiling file is shared with the g=4 rows because a one-shot ceiling is
+        # the same forward on the same canvas -- an identity, not a measurement to repeat.
+        ("COCO Ret. one-shot g=1 (i2t R@1)", None, ("offload", "openclip_cocoret", "g1")),
+        ("COCO Ret. one-shot g=1 (t2i R@1)", None, ("offload", "openclip_cocoret", "g1")),
     ]),
     ("VGGT-Omega (7B)", [
         (r"Co3Dv2 (Depth AbsRel $\downarrow$)", None, ("offload", "vggt_co3d")),
@@ -594,14 +606,14 @@ def inproc_flops(model: str, dataset: str, key: str) -> Optional[float]:
     return (_INPROC.get(model, {}) or {}).get(dataset, {}).get(key)
 
 
-def offload_total(base: str, key: str) -> Optional[float]:
+def offload_total(base: str, key: str, groups: str = "g4") -> Optional[float]:
     """Per-instruction TOTAL FLOPs of an arm: approximate pass plus every correction round.
 
     total/full is the compute OVERHEAD the schedule pays. It is a different question from the
     critical share, and the two move in opposite directions -- deferring less past the last byte
     generally costs more work overall.
     """
-    p = os.path.join(FLOPS_DIR, f"{base}_g4_{key}.json")
+    p = os.path.join(FLOPS_DIR, f"{base}_{groups}_{key}.json")
     if not (os.path.exists(p) and os.path.getsize(p) > 0):
         return None
     try:
@@ -616,17 +628,19 @@ def get_total(spec, key: str) -> Optional[float]:
         return None
     if spec[0] == "inproc":
         return inproc_flops(spec[1], spec[2], f"total_{key}")
-    return offload_total(spec[1], key)
+    return offload_total(spec[1], key, *spec[2:])
 
 
-def offload_flops(base: str, key: str) -> Optional[float]:
+def offload_flops(base: str, key: str, groups: str = "g4") -> Optional[float]:
     """Per-INSTRUCTION FLOPs from a worker-written JSON.
 
     Divides by the recorded batch size. Arms of one model disagree on it -- NYU's ceiling runs at 1
     while its interleaved arms run at 8 -- so per-request means are not comparable and reading them
     directly made NYU's critical exceed its own ceiling.
     """
-    tag = f"{base}_ceiling" if key == "full" else f"{base}_g4_{key.replace('k', 'k')}"
+    # Optional third spec element selects the arm's group-count infix ("g1" for the one-shot rows);
+    # the ceiling has no groups and is shared across them.
+    tag = f"{base}_ceiling" if key == "full" else f"{base}_{groups}_{key}"
     p = os.path.join(FLOPS_DIR, f"{tag}.json")
     if not (os.path.exists(p) and os.path.getsize(p) > 0):
         return None
@@ -644,7 +658,7 @@ def get_flops(spec, key: str) -> Optional[float]:
         return None
     if spec[0] == "inproc":
         return inproc_flops(spec[1], spec[2], key)
-    return offload_flops(spec[1], key)
+    return offload_flops(spec[1], key, *spec[2:])
 
 
 def fmt_tf(gf: Optional[float], full: Optional[float]) -> str:

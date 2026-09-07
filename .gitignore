@@ -219,6 +219,7 @@ appcorr/weights
 graphify-out
 AGENTS.md
 CLAUDE.md
+analysis/qwen_vl_prefill/_vsr_images
 analysis/qwen_vl_prefill/_vsr_images/
 analysis/qwen_vl_prefill/_textvqa_samples/
 

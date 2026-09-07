@@ -1,0 +1,34 @@
+{
+ "_meta": {
+  "groups": 4,
+  "unit": "GFLOPs/instruction",
+  "note": "backbone prefill only (both towers + projector + 32 Llama layers); decode_action's 7-token generation excluded; frontiers 32x4, sequential grouping, no server pscore filter -- the LIBERO campaign's exact schedule"
+ },
+ "openvla": {
+  "_samples": 3,
+  "libero_spatial": {
+   "full": 4207.1,
+   "floor": 4207.1,
+   "k1.00": 1691.2,
+   "total_k1.00": 10402.1
+  },
+  "libero_object": {
+   "full": 4132.0,
+   "floor": 4132.0,
+   "k1.00": 1616.7,
+   "total_k1.00": 10028.9
+  },
+  "libero_goal": {
+   "full": 4083.4,
+   "floor": 4083.4,
+   "k1.00": 1568.5,
+   "total_k1.00": 9787.6
+  },
+  "libero_10": {
+   "full": 4158.5,
+   "floor": 4158.5,
+   "k1.00": 1643.0,
+   "total_k1.00": 10160.6
+  }
+ }
+}

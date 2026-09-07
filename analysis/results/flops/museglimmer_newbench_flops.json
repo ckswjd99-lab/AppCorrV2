@@ -1,0 +1,25 @@
+{
+ "_model": "meta-models/Muse-Glimmer-30B",
+ "_samples": 12,
+ "_groups": 4,
+ "mmvp": {
+  "full": 8831.1,
+  "floor": 8831.1,
+  "crit_g4_k0.25": 2770.1,
+  "total_g4_k0.25": 9113.4,
+  "crit_g4_k0.50": 2830.5,
+  "total_g4_k0.50": 9355.0,
+  "crit_g4": 2951.3,
+  "total_g4": 9791.1
+ },
+ "cvbench": {
+  "full": 63482.1,
+  "floor": 63482.1,
+  "crit_g4_k0.25": 14560.4,
+  "total_g4_k0.25": 67133.6,
+  "crit_g4_k0.50": 15492.5,
+  "total_g4_k0.50": 70884.1,
+  "crit_g4": 17357.9,
+  "total_g4": 77779.3
+ }
+}

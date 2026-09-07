@@ -1,0 +1,24 @@
+{
+ "_model": "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+ "_level": 2,
+ "_samples": 12,
+ "visdrone_det": {
+  "full": 73867.1,
+  "corrected_k1.00": {
+   "crit": 73867.1,
+   "total": 80388.3
+  },
+  "corrected_qsel_k1.00": {
+   "crit": 73867.1,
+   "total": 146231.9
+  },
+  "streaming_k1.00": {
+   "crit": 18023.1,
+   "total": 79831.7
+  },
+  "streaming_qsel_k1.00": {
+   "crit": 18023.1,
+   "total": 145675.3
+  }
+ }
+}

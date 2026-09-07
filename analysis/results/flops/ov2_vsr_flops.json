@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "groups": 4,
+    "unit": "GFLOPs/instruction",
+    "note": "backbone prefill only; decode excluded"
+  },
+  "ov2": {
+    "_samples": 12,
+    "vsr": {
+      "full": 7117.3,
+      "k0.25": 1154.4,
+      "total_k0.25": 8992.5,
+      "k0.50": 1558.3,
+      "total_k0.50": 10041.0,
+      "k1.00": 2094.0,
+      "total_k1.00": 8196.9
+    }
+  }
+}

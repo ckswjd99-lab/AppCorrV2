@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "groups": 4,
+    "unit": "GFLOPs/instruction",
+    "note": "backbone prefill only; decode excluded"
+  },
+  "gemma3": {
+    "_samples": 12,
+    "vsr": {
+      "full": 7412.8,
+      "k0.25": 733.2,
+      "total_k0.25": 8891.1,
+      "k0.50": 1178.1,
+      "total_k0.50": 10075.7
+    }
+  }
+}
