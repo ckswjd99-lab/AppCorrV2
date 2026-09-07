@@ -438,16 +438,24 @@ LITERALS = {
     # within 0.06 of the literal, which is what validates the new loader against the prior protocol
     ("OpenCLIP (2.5B)", "COCO Ret. val2017 (i2t R@1)"): {"floor": 50.14, "ceiling": 67.92},
     ("OpenCLIP (2.5B)", "COCO Ret. val2017 (t2i R@1)"): {"floor": 40.37, "ceiling": 50.64},
-    # LIBERO-Spatial streaming: July 2026 campaign (chunked causal prefill, sequential grouping,
-    # frontiers 32x4, 500 episodes = 10 tasks x 50 trials, post initial-state-fix driver). The
-    # primary jsonl was written to /tmp and lost to a reboot -- these digits survive in the
-    # campaign session records only. User accepted them for the table (2026-08-27); re-measurement
-    # is the queued VLA-track task that will restore primary evidence. Same-harness baseline 82.8.
-    ("OpenVLA (7B)", "LIBERO-Spatial (Success Rate)"): {"ceiling": 82.80, "floor": 17.20,
-                                                        "stream": 81.60},
-    ("OpenVLA (7B)", "LIBERO-Object (Success Rate)"):  {"ceiling": 89.00},
-    ("OpenVLA (7B)", "LIBERO-Goal (Success Rate)"):    {"ceiling": 73.00},
-    ("OpenVLA (7B)", "LIBERO-Long (Success Rate)"):    {"ceiling": 54.00},
+    # LIBERO-Spatial: ceiling re-measured 2026-09-04 on the rebuilt env (numpy 1.26 fix; llvmpipe
+    # EGL) with the offload driver's `full` schedule, 500 episodes = 10 tasks x 50 trials, primary
+    # evidence AppCorr-openvla/analysis/results/openvla/libero_spatial_{full,approx,interleaved}_t50.jsonl
+    # (July's same-harness 82.8/17.2/81.6 were lost with /tmp; paper 84.7 +- 0.9). floor = approx-only
+    # schedule 93/500; stream = interleaved schedule, frontiers 32x4 (per-group chunked causal
+    # prefill), sequential grouping, g=4, 409/500 (2026-09-04) -- ties the 408/500 ceiling.
+    ("OpenVLA (7B)", "LIBERO-Spatial (Success Rate)"): {"ceiling": 81.60, "floor": 18.60,
+                                                        "stream": 81.80},
+    # LIBERO-Object/Goal/Long: same campaign, 2026-09-05..07 (offload full/approx/interleaved
+    # schedules, 500 episodes each, official max_steps 280/300/520); prior ceiling literals
+    # 89/73/54. Object 430/99/424, Goal 375/89/374, Long 259/13/227 (ceiling/floor/stream).
+    # Long stream ran on cuda:1 (--device) alongside approx on cuda:0; paired delta vs ceiling
+    # -6.4pp, 95% CI [-12.0, -1.2], 85 wins / 117 losses over 500 (task,trial) pairs -- the
+    # only suite where stream is below the ceiling beyond noise (520-step horizon).
+    ("OpenVLA (7B)", "LIBERO-Object (Success Rate)"):  {"ceiling": 86.00, "floor": 19.80,
+                                                        "stream": 84.80},
+    ("OpenVLA (7B)", "LIBERO-Goal (Success Rate)"):    {"ceiling": 75.00, "floor": 17.80, "stream": 74.80},
+    ("OpenVLA (7B)", "LIBERO-Long (Success Rate)"):    {"ceiling": 51.80, "floor": 2.60, "stream": 45.40},
 }
 
 
