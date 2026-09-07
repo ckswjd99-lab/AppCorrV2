@@ -240,9 +240,12 @@ SPEC = [
         ("V*Bench (Acc.)",              None, ("inproc", "qwen35_122b", "vstar")),
     ]),
     # OpenVLA FLOPs (2026-09-07): AppCorr-openvla/analysis/experiments/flops_report_openvla.py,
-    # in-process, the campaign's exact schedule (frontiers 32x4, sequential grouping, cumulative
-    # vision correction). Backbone = both towers + projector + 32 Llama layers; the 7-token
-    # action decode is excluded like every other model's decode. Only the streaming (k=1.00)
+    # in-process, 4 sequential groups with cumulative vision correction. Backbone = both towers +
+    # projector + 32 Llama layers; the 7-token action decode is excluded like every other model's
+    # decode. k1.00/total_k1.00 are the CHUNKED causal prefill (no LLM approx pass, each position
+    # once, text once; total ~127%). The accuracy campaign ran the interleaved schedule (frontiers
+    # 32x4), gated bit-identical to chunked on final state / action bins (openvla_chunked_gate.py),
+    # whose redundant cost (~244%) is kept as interleaved_total_k1.00. Only the streaming (k=1.00)
     # arm exists for the VLA, so the one-shot columns stay "--" by construction.
     ("OpenVLA (7B)", [
         ("LIBERO-Spatial (Success Rate)", None, ("inproc", "openvla", "libero_spatial")),
@@ -454,8 +457,9 @@ LITERALS = {
     # EGL) with the offload driver's `full` schedule, 500 episodes = 10 tasks x 50 trials, primary
     # evidence AppCorr-openvla/analysis/results/openvla/libero_spatial_{full,approx,interleaved}_t50.jsonl
     # (July's same-harness 82.8/17.2/81.6 were lost with /tmp; paper 84.7 +- 0.9). floor = approx-only
-    # schedule 93/500; stream = interleaved schedule, frontiers 32x4 (per-group chunked causal
-    # prefill), sequential grouping, g=4, 409/500 (2026-09-04) -- ties the 408/500 ceiling.
+    # schedule 93/500; stream = interleaved schedule, frontiers 32x4, sequential grouping, g=4,
+    # 409/500 (2026-09-04) -- ties the 408/500 ceiling. (Gated bit-identical to the chunked causal
+    # prefill whose compute the Comp cells report; see the FLOPs comment in SPEC.)
     ("OpenVLA (7B)", "LIBERO-Spatial (Success Rate)"): {"ceiling": 81.60, "floor": 18.60,
                                                         "stream": 81.80},
     # LIBERO-Object/Goal/Long: same campaign, 2026-09-05..07 (offload full/approx/interleaved

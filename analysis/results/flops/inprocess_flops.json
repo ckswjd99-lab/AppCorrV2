@@ -233,56 +233,56 @@
     "_samples": 6,
     "realworldqa": {
       "full": 121078.4,
-      "k0.25": 11347.4,
-      "total_k0.25": 157781.6,
-      "k0.50": 18661.5,
-      "total_k0.50": 187037.9,
+      "k0.25": 10377.3,
+      "total_k0.25": 153901.4,
+      "k0.50": 17691.4,
+      "total_k0.50": 183157.6,
       "k1.00": 32319.5,
       "total_k1.00": 131169.7
     },
     "gqa": {
       "full": 21506.2,
-      "k0.25": 3796.2,
-      "total_k0.25": 31754.9,
-      "k0.50": 4976.7,
-      "total_k0.50": 36476.7,
+      "k0.25": 2853.8,
+      "total_k0.25": 27985.2,
+      "k0.50": 4034.3,
+      "total_k0.50": 32707.0,
       "k1.00": 6395.1,
       "total_k1.00": 23065.9
     },
     "refcoco": {
       "full": 31780.0,
-      "k0.25": 6171.6,
-      "total_k0.25": 46029.5,
-      "k0.50": 7878.5,
-      "total_k0.50": 52857.1,
+      "k0.25": 5226.2,
+      "total_k0.25": 42247.9,
+      "k0.50": 6933.1,
+      "total_k0.50": 49075.5,
       "k1.00": 10346.9,
       "total_k1.00": 34040.5
     },
-    "_schedule": "text-split: pre-image text corrected every round, post-image text final round only (accuracy-neutral at full scale: k0.50 A/B -0.02pp, flips 21:23, n=8604; k0.25 subset A/B -0.05pp)",
+    "_schedule": "text-split (2026-09-07): pre-image text NEVER corrected (causal LLM: the approx pass already computed those rows exactly), post-image text corrected on the final round only. Gated vs the previous schedule (pre-image text every round) in fp32 on Qwen2.5-VL-7B, 12 runs x 3 datasets x k in {1.0, 0.25}: final hidden max|d| <= 5.7e-2 (of ~1e3, arithmetic noise), first-token logits max|d| <= 7.2e-5, argmax and top-5 identical (analysis/experiments/qwen25vl_text_correct_gate.py). Accuracy cells stand; the earlier schedule's totals were 127-195% of full, now 127-145%. The previous split (pre-image every round, post-image final only) was itself accuracy-neutral at full scale: k0.50 A/B -0.02pp, flips 21:23, n=8604.",
     "vstar": {
       "full": 418641.3,
-      "k0.25": 30382.3,
-      "total_k0.25": 531392.0,
-      "k0.50": 56262.0,
-      "total_k0.50": 634910.7,
+      "k0.25": 29340.7,
+      "total_k0.25": 527225.7,
+      "k0.50": 55220.4,
+      "total_k0.50": 630744.4,
       "k1.00": 106979.8,
       "total_k1.00": 459022.6
     },
     "mmvp": {
       "full": 7562.0,
-      "k0.25": 3499.5,
-      "total_k0.25": 14708.5,
-      "k0.50": 3770.3,
-      "total_k0.50": 15791.6,
+      "k0.25": 2561.0,
+      "total_k0.25": 10954.7,
+      "k0.50": 2831.8,
+      "total_k0.50": 12037.8,
       "k1.00": 3373.4,
       "total_k1.00": 7916.5
     },
     "cvbench": {
       "full": 30063.5,
-      "k0.25": 6208.4,
-      "total_k0.25": 43988.8,
-      "k0.50": 7798.5,
-      "total_k0.50": 50349.0,
+      "k0.25": 5263.6,
+      "total_k0.25": 40209.3,
+      "k0.50": 6853.6,
+      "total_k0.50": 46569.4,
       "k1.00": 10033.7,
       "total_k1.00": 32184.2
     }
@@ -625,31 +625,39 @@
     }
   },
   "openvla": {
-    "_note": "backbone prefill only (both towers + projector + 32 Llama layers); decode_action's 7-token generation excluded; frontiers 32x4, sequential grouping, no server pscore filter -- the LIBERO campaign's exact schedule Reporter: AppCorr-openvla/analysis/experiments/flops_report_openvla.py (2026-09-07).",
+    "_note": "backbone prefill only (both towers + projector + 32 Llama layers); decode_action's 7-token generation excluded; 4 sequential groups, no server pscore filter. k1.00/total_k1.00 = chunked causal prefill (the stream arm's compute); interleaved_* = the campaign's frontiers-32x4 approx-then-correct schedule (gated equivalent, redundant) Reporter: AppCorr-openvla/analysis/experiments/flops_report_openvla.py (2026-09-07). The LIBERO accuracy campaign ran the interleaved schedule; chunked was gated bit-identical to it on final state / decoded action bins (openvla_chunked_gate.py, 6 frames), so its compute is the stream arm's.",
     "_samples": 3,
     "libero_spatial": {
       "full": 4207.1,
       "floor": 4207.1,
       "k1.00": 1691.2,
-      "total_k1.00": 10402.1
+      "total_k1.00": 5314.8,
+      "interleaved_k1.00": 1691.2,
+      "interleaved_total_k1.00": 10402.1
     },
     "libero_object": {
       "full": 4132.0,
       "floor": 4132.0,
       "k1.00": 1616.7,
-      "total_k1.00": 10028.9
+      "total_k1.00": 5240.3,
+      "interleaved_k1.00": 1616.7,
+      "interleaved_total_k1.00": 10028.9
     },
     "libero_goal": {
       "full": 4083.4,
       "floor": 4083.4,
       "k1.00": 1568.5,
-      "total_k1.00": 9787.6
+      "total_k1.00": 5192.1,
+      "interleaved_k1.00": 1568.5,
+      "interleaved_total_k1.00": 9787.6
     },
     "libero_10": {
       "full": 4158.5,
       "floor": 4158.5,
       "k1.00": 1643.0,
-      "total_k1.00": 10160.6
+      "total_k1.00": 5266.6,
+      "interleaved_k1.00": 1643.0,
+      "interleaved_total_k1.00": 10160.6
     }
   }
 }

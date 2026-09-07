@@ -68,9 +68,12 @@ class Qwen25VLExecutor(ModelExecutor):
         from appcorr.models.qwen25vl.llm.decoder_layer import ApproxCorrectQwen25VLDecoderLayer
 
         model_path = config.dataset_kwargs.get("model_path", MODEL_ID_32B)
-        print(f"[Executor] Loading Model: {model_path} ...")
+        # dataset_kwargs.model_dtype: "bfloat16" (default, every eval) or "float32" (numerical
+        # gates only -- e.g. analysis/experiments/qwen25vl_text_correct_gate.py).
+        self.dtype = getattr(torch, str(config.dataset_kwargs.get("model_dtype", "bfloat16")))
+        print(f"[Executor] Loading Model: {model_path} ({self.dtype}) ...")
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_path, dtype=torch.bfloat16, attn_implementation="sdpa"
+            model_path, dtype=self.dtype, attn_implementation="sdpa"
         ).to(self.device).eval()
         self.processor = AutoProcessor.from_pretrained(model_path)
         self.image_token_id = self.model.config.image_token_id
@@ -99,7 +102,7 @@ class Qwen25VLExecutor(ModelExecutor):
         canvas = canvas.astype("uint8")
 
         proc_out = self.processor.image_processor(images=[canvas], return_tensors="pt")
-        context["pixel_values"] = proc_out["pixel_values"].to(device=self.device, dtype=torch.bfloat16)
+        context["pixel_values"] = proc_out["pixel_values"].to(device=self.device, dtype=self.dtype)
         context["image_grid_thw"] = proc_out["image_grid_thw"].to(self.device)
         _trace_save("pixel_values", context["pixel_values"])
         _trace_save("image_grid_thw", context["image_grid_thw"])
@@ -349,10 +352,17 @@ class Qwen25VLExecutor(ModelExecutor):
         # LLM: correct THIS round's image tokens plus text, with text split BY POSITION relative
         # to the (contiguous, asserted in `_build_prompt`) image block:
         #
-        #   * PRE-image text (system preamble): corrected EVERY round. Causal attention means
-        #     every image row reads these rows' K/V, and the approx pass computed their layer>=1
-        #     K/V against the degraded image state -- refreshing them each round gives the image
-        #     correction better context. Few tokens, negligible cost.
+        #   * PRE-image text (system preamble): NEVER corrected. On a causal LLM these rows read
+        #     only rows before themselves -- none of which is an image row -- so the approx pass
+        #     (a plain causal forward over all N rows, `decoder_layer.approx`) already computed
+        #     them exactly; re-correcting them returns the same values. An earlier version
+        #     corrected them every round on the mistaken premise that their K/V had been computed
+        #     "against the degraded image state" -- pure waste, and for small images (MMVP 224px:
+        #     64 image tokens, N=116) it was 60 of the 113 correction queries, pushing total
+        #     compute to 195% of the ceiling. Gated before removal in fp32 on the 7B model (12
+        #     runs, 3 datasets x k in {1.0, 0.25}, analysis/experiments/qwen25vl_text_correct_gate.py):
+        #     final hidden state within arithmetic noise (max|d| <= 5.7e-2 of ~1e3), first-token
+        #     logits max|d| <= 7.2e-5, argmax and top-5 identical everywhere.
         #   * POST-image text (question + generation prompt): corrected on the FINAL round ONLY.
         #     Nothing sits after them in the sequence, so no consumer reads their intermediate
         #     corrections before decode -- and every round restarts from the fresh
@@ -410,10 +420,12 @@ class Qwen25VLExecutor(ModelExecutor):
             if token_idx.numel() == 0:
                 return
         else:
-            if is_final_round or all_img.numel() == 0:
+            if all_img.numel() == 0:
                 text_idx = perm
+            elif is_final_round:
+                text_idx = perm[perm > all_img[-1]]
             else:
-                text_idx = perm[perm < all_img[0]]
+                text_idx = perm[:0]
             token_idx = torch.cat([text_idx, image_token_positions]).unique()
 
         x_feature = context["llm_input_embeds"]
