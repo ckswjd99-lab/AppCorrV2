@@ -110,4 +110,15 @@ class ApproxCorrectBlock(nn.Module):
         x_out = x_out.clone()
         x_out[:, token_idx] = (x_attn_active + mlp_out_new).to(dtype=x_out.dtype)
 
+        # Persist this block's *corrected* increment over the approximate one (DINOv3
+        # `SelfAttentionBlock.correct_partial_token`, ac0238f): a later round that replays this
+        # block for a different token set rebuilds these rows as `x + blocks_out_sum`, and without
+        # the write it rebuilds them from the stale approx increment -- every earlier round's
+        # correction of a row survives only through the K/V cache, its own value is discarded.
+        # `ls1(x_attn_sel) + mlp_out_new` is exactly what `.approx()` would have stored, so the two
+        # paths stay interchangeable. No-op under cumulative correction (every corrected row is in
+        # the query set again next round, so the stored value is never read back); it is what makes
+        # a new-only schedule (each round corrects only its own group) accumulate at all.
+        blocks_out_sum[:, token_idx] = ((x_attn_active - x_active) + mlp_out_new).to(blocks_out_sum.dtype)
+
         return x_out, cache_feature

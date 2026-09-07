@@ -36,7 +36,7 @@ from appcorr.models.openvla.llm.llama_prefill_layer import ApproxCorrectLlamaDec
 
 class OpenVLAProgressiveModel:
     def __init__(self, checkpoint: str, device: torch.device, unnorm_key: Optional[str] = None,
-                 sdpa_query_bucket_size: int = 0):
+                 sdpa_query_bucket_size: int = 0, vision_correction: str = "cumulative"):
         from transformers import AutoModelForVision2Seq, AutoProcessor
 
         self.device = device
@@ -76,6 +76,12 @@ class OpenVLAProgressiveModel:
         # _maybe_warmup_llm_correct_buckets.
         self.sdpa_query_bucket_size = sdpa_query_bucket_size
         self._warmup_done = False
+        # Which patches the vision towers recompute in vision_correct: "cumulative" = every arrived
+        # patch, every round (the LIBERO campaign's arm); "new_only" = only this round's group,
+        # the DINOv3 interleaved schedule (block.correct persists the corrected increment, so
+        # earlier rounds survive the per-round layer-0 restart). See vision_correct.
+        assert vision_correction in ("cumulative", "new_only"), vision_correction
+        self.vision_correction = vision_correction
 
         # Session state, set in start_session()
         self.cache_feature: Dict[str, Any] = {}
@@ -260,10 +266,21 @@ class OpenVLAProgressiveModel:
         Measured mean_abs_err=0.023, max_abs_err=1.25 vs a single-shot-full correction, even after
         all 256 patches had arrived (verified the OLD/current cumulative behavior is bit-exact
         there, max_abs_err=0.0). A real cost with no matching benefit -- reverted.
+
+        2026-09-07: that measurement was confounded -- `block.correct` did not write the corrected
+        increment back into `blocks_out_sum` at the time (interleaved-contract rule 3, DINOv3
+        ac0238f), so under new-only every round's layer-0 restart rebuilt the earlier groups from
+        the stale APPROX increment and discarded their corrections. The write-back is in now, and
+        `vision_correction="new_only"` re-enables the schedule (towers get `new_idx` only) so it
+        can be measured properly: analysis/experiments/openvla_newonly_gate.py (feature error split
+        into with/without write-back) and flops_report_openvla.py (`newonly_*` keys). The
+        latency argument (op-level, tiny towers) is unchanged; the FLOPs argument is not -- the
+        towers are 3.4x a stock forward under cumulative and ~2x under new-only.
         """
+        tower_idx = new_idx if self.vision_correction == "new_only" else all_arrived_idx
         dino_px, siglip_px = torch.split(pixel_values.to(dtype=torch.bfloat16), [3, 3], dim=1)
-        dino_feat, self.cache_feature = self.dino_backbone.correct_forward(dino_px, all_arrived_idx, self.cache_feature, "dino")
-        siglip_feat, self.cache_feature = self.siglip_backbone.correct_forward(siglip_px, all_arrived_idx, self.cache_feature, "siglip")
+        dino_feat, self.cache_feature = self.dino_backbone.correct_forward(dino_px, tower_idx, self.cache_feature, "dino")
+        siglip_feat, self.cache_feature = self.siglip_backbone.correct_forward(siglip_px, tower_idx, self.cache_feature, "siglip")
         self._x0 = self._build_multimodal_embed(self._project_vision(dino_feat, siglip_feat))
         if self.llm_frontier == 0:
             self.cache_feature["_x"] = self._x0

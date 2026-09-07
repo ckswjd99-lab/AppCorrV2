@@ -1,0 +1,20 @@
+{
+ "_meta": {
+  "groups": 4,
+  "unit": "GFLOPs/instruction",
+  "note": "backbone prefill only (both towers + projector + 32 Llama layers); decode_action's 7-token generation excluded; 4 sequential groups, no server pscore filter. k1.00/total_k1.00 = chunked causal prefill (the stream arm's compute); interleaved_* = the campaign's frontiers-32x4 approx-then-correct schedule (gated equivalent, redundant)"
+ },
+ "openvla": {
+  "_samples": 3,
+  "libero_spatial": {
+   "full": 4207.1,
+   "floor": 4207.1,
+   "k1.00": 1691.2,
+   "total_k1.00": 5314.8,
+   "interleaved_k1.00": 1691.2,
+   "interleaved_total_k1.00": 10402.1,
+   "newonly_k1.00": 1406.3,
+   "newonly_total_k1.00": 4745.1
+  }
+ }
+}

@@ -77,6 +77,10 @@ def parse_args():
                               "(OpenVLAProgressiveModel._bucketize_token_idx); 0 = disabled. "
                               "Fixes the cuBLAS/SDPA per-shape one-time cost triggered by a "
                               "data-dependent query size (e.g. under server_pscore_threshold).")
+    parser.add_argument("--vision-correction", type=str, default="cumulative",
+                        choices=["cumulative", "new_only"],
+                        help="Which patches the vision towers recompute per round: every arrived "
+                             "patch (campaign arm) or only this round's group (DINOv3-style).")
     return parser.parse_args()
 
 
@@ -96,6 +100,8 @@ def make_config(args, schedule: str):
         scheduler_kwargs["server_pscore_threshold"] = args.server_pscore_threshold
     if args.sdpa_query_bucket_size:
         scheduler_kwargs["sdpa_query_bucket_size"] = args.sdpa_query_bucket_size
+    if args.vision_correction != "cumulative":
+        scheduler_kwargs["vision_correction"] = args.vision_correction
     if getattr(args, "frontiers", None):
         scheduler_kwargs["frontiers"] = [int(f) for f in args.frontiers.split(",")]
 
@@ -273,6 +279,7 @@ def main():
                         "success": bool(success), "steps": int(steps), "wall_s": round(time.time() - t0, 1),
                         "grouping": args.grouping, "num_groups": args.num_groups,
                         "frontiers": args.frontiers, "max_steps": args.max_steps,
+                        "vision_correction": args.vision_correction,
                     })
             results[schedule] = outcomes
             timing[schedule] = {k: (float(np.mean(v)), len(v)) for k, v in op_times.items()}

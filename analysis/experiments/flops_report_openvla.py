@@ -21,6 +21,11 @@ run in the LIBERO campaign (`--frontiers 32,32,32,32 --grouping sequential`, num
                (analysis/experiments/openvla_chunked_gate.py), so the accuracy numbers carry over
                and this is the stream arm's compute (`k1.00`/`total_k1.00`); the interleaved
                schedule's cost is kept under `interleaved_k1.00`/`interleaved_total_k1.00`.
+  newonly      chunked, but the towers recompute only this round's 64 patches
+               (`vision_correction="new_only"`, DINOv3-style; block.correct persists the corrected
+               increment). NOT output-equivalent to chunked (bidirectional towers: earlier groups'
+               K/V stay stale, openvla_newonly_gate.py) -- an accuracy arm of its own, recorded
+               under `newonly_k1.00`/`newonly_total_k1.00` until it has one.
 
 Backbone = both vision towers + projector + the 32 Llama layers. `lm_head` and `decode_action`'s
 7-token generation are outside (decode excluded, as everywhere else). FLOPs are shape-determined
@@ -175,8 +180,12 @@ def main():
         floor_g = run(approx)["mean_total_gflops"]
         agg_i = run(interleaved)
         agg_c = run(chunked)
+        pm.vision_correction = "new_only"
+        agg_n = run(chunked)
+        pm.vision_correction = "cumulative"
         crit_i, tot_i = agg_i["mean_critical_gflops"], agg_i["mean_total_gflops"]
         crit_c, tot_c = agg_c["mean_critical_gflops"], agg_c["mean_total_gflops"]
+        crit_n, tot_n = agg_n["mean_critical_gflops"], agg_n["mean_total_gflops"]
         n_text = int(pm.input_ids.shape[1])
         print(f"\n══ {suite}  (n={len(tasks)}, seq = 1 + {NUM_PATCHES} + {n_text - 1} text) ══")
         print(f"  full inference (ceiling prefill)   {full_g:10.1f} GFLOPs/instruction")
@@ -185,10 +194,14 @@ def main():
               f"critical/full = {100*crit_c/full_g:5.1f}%   total/full = {100*tot_c/full_g:5.1f}%")
         print(f"  interleaved g={a.groups} k=1.00      critical {crit_i:9.1f}  total {tot_i:9.1f} GFLOPs   "
               f"critical/full = {100*crit_i/full_g:5.1f}%   total/full = {100*tot_i/full_g:5.1f}%")
+        print(f"  chunked+new-only vision g={a.groups} critical {crit_n:9.1f}  total {tot_n:9.1f} GFLOPs   "
+              f"critical/full = {100*crit_n/full_g:5.1f}%   total/full = {100*tot_n/full_g:5.1f}%")
         out["openvla"][suite] = {"full": round(full_g, 1), "floor": round(floor_g, 1),
                                  "k1.00": round(crit_c, 1), "total_k1.00": round(tot_c, 1),
                                  "interleaved_k1.00": round(crit_i, 1),
-                                 "interleaved_total_k1.00": round(tot_i, 1)}
+                                 "interleaved_total_k1.00": round(tot_i, 1),
+                                 "newonly_k1.00": round(crit_n, 1),
+                                 "newonly_total_k1.00": round(tot_n, 1)}
         out["openvla"]["_samples"] = len(tasks)
         del pm, roots
         torch.cuda.empty_cache()

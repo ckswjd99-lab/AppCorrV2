@@ -50,9 +50,12 @@ class OpenVLAExecutor(ModelExecutor):
         checkpoint = config.dataset_kwargs.get("checkpoint", "openvla/openvla-7b-finetuned-libero-spatial")
         unnorm_key = config.dataset_kwargs.get("unnorm_key")
         bucket_size = int(config.scheduler_kwargs.get("sdpa_query_bucket_size", 0))
-        print(f"[Executor] Loading OpenVLA progressive model: {checkpoint} (sdpa_query_bucket_size={bucket_size})")
+        vision_correction = config.scheduler_kwargs.get("vision_correction", "cumulative")
+        print(f"[Executor] Loading OpenVLA progressive model: {checkpoint} "
+              f"(sdpa_query_bucket_size={bucket_size}, vision_correction={vision_correction})")
         self.pm = OpenVLAProgressiveModel(
             checkpoint, self.device, unnorm_key=unnorm_key, sdpa_query_bucket_size=bucket_size,
+            vision_correction=vision_correction,
         )
         self.model = self.pm.vla
 
