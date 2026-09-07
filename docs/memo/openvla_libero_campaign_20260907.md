@@ -10,10 +10,16 @@ kind=summary line with op timings).
 Arms (offload scheduler `VLAInterleavedStatic`):
 - **full** = ceiling (FULL_INFERENCE, stock model)
 - **approx** = floor (approx-only pass, no correction)
-- **interleaved** = stream: `--frontiers 32,32,32,32 --grouping sequential`, g=4. This is
-  approx-then-interleaved-correct, NOT a chunked causal prefill: an approx pass over the full canvas
-  through all 32 layers, then per group (64 patches) a cumulative `vision_correct` over every arrived
-  patch and an `llm_correct_segment` through all 32 layers over the new patches + text.
+- **interleaved** = stream: `--frontiers 32,32,32,32 --grouping sequential`, g=4. As RUN this is
+  approx-then-interleaved-correct: an approx pass over the full canvas through all 32 layers, then per
+  group (64 patches) a cumulative `vision_correct` over every arrived patch and an
+  `llm_correct_segment` through all 32 layers over the new patches + text. The repo's `chunked`
+  schedule (true chunked causal prefill: no LLM approx pass, every position prefilled once, text
+  once) was gated against it on 6 real LIBERO frames (`analysis/experiments/openvla_chunked_gate.py`,
+  bf16): top-layer text state, last-position logits and all 7 decoded action bins are BIT-IDENTICAL
+  (max|d| = 0). For a causal decoder with raster grouping the two schedules read the same K/V at
+  every step, so the interleaved rollouts ARE the chunked arm's rollouts; only the wasted LLM work
+  differs, which is why the compute below is reported for `chunked`.
 
 ## Results (success rate, %)
 
@@ -43,17 +49,20 @@ Both towers + projector + 32 Llama layers; `decode_action`'s 7-token generation 
 pass has the ceiling's shapes, so floor == full. Merged into AppCorr-qwen35-eval's
 `inprocess_flops.json["openvla"]` (side JSON `openvla_libero_flops.json`).
 
-| Suite | Full (ceiling) | Floor | Stream critical | Stream total |
-|---|---|---|---|---|
-| Spatial | 4207.1 | 4207.1 | 1691.2 (40.2%) | 10402.1 (247%) |
-| Object | 4132.0 | 4132.0 | 1616.7 (39.1%) | 10028.9 (243%) |
-| Goal | 4083.4 | 4083.4 | 1568.5 (38.4%) | 9787.6 (240%) |
-| Long | 4158.5 | 4158.5 | 1643.0 (39.5%) | 10160.6 (244%) |
+| Suite | Full (ceiling) | Floor | Stream critical | Stream total (chunked) | Interleaved-as-run total |
+|---|---|---|---|---|---|
+| Spatial | 4207.1 | 4207.1 | 1691.2 (40.2%) | 5314.8 (126%) | 10402.1 (247%) |
+| Object | 4132.0 | 4132.0 | 1616.7 (39.1%) | 5240.3 (127%) | 10028.9 (243%) |
+| Goal | 4083.4 | 4083.4 | 1568.5 (38.4%) | 5192.1 (127%) | 9787.6 (240%) |
+| Long | 4158.5 | 4158.5 | 1643.0 (39.5%) | 5266.6 (127%) | 10160.6 (244%) |
 
-Total is 2.4x the ceiling because the towers are re-run cumulatively per group and each of the 4
-corrections re-traverses all 32 layers over the 64 new patches plus the text (the text is
-re-corrected every round). Critical (= the last group's correction) is ~39%, the same ballpark as
-the VLM streaming rows.
+Stream total (chunked) = full + one extra vision pass per group (the towers are bidirectional and
+re-run cumulatively per group, ~277 GF each) with the LLM traversed exactly once; this is the
+table's `k1.00`/`total_k1.00`. The interleaved schedule as it was run is 2.4x the ceiling because it
+adds a full-canvas LLM approx pass and re-corrects the text every round -- pure redundancy with no
+effect on the output (gate above); kept in the JSON as `interleaved_total_k1.00`. Critical (= the
+last group's vision correction + last LLM chunk) is identical under both schedules, ~39%, the same
+ballpark as the VLM streaming rows.
 
 ## Reading
 

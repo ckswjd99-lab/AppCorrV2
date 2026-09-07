@@ -1,4 +1,5 @@
-"""Backbone FLOPs for the OpenVLA LIBERO arms: full (ceiling), approx (floor), interleaved stream.
+"""Backbone FLOPs for the OpenVLA LIBERO arms: full (ceiling), approx (floor), chunked stream,
+and the campaign's interleaved schedule.
 
 Mirrors AppCorr-qwen35-eval's flops_report_*.py reporters (same `appcorr.flops` session API,
 ported verbatim into this worktree) so the numbers drop into `inprocess_flops.json` under
@@ -12,6 +13,14 @@ run in the LIBERO campaign (`--frontiers 32,32,32,32 --grouping sequential`, num
   interleaved  approx, then per residual group g=1..4:
                  vision_correct(all arrived patches, this group's 64 new)   -- cumulative towers
                  llm_correct_segment(32, new_idx + 1)                        -- 32 layers, 64+text q
+  chunked      vision_approx + llm_chunked_init (BOS only), then per group g=1..4:
+                 vision_correct(...) as above; llm_prefill_segment(new_idx + 1, include_text=g==4)
+               -- the exact chunked causal prefill (`schedule=chunked` in vla_interleaved_static.py):
+               every LLM position is computed exactly once, no LLM approx pass, text once.
+               Gated equivalent to `interleaved` on the final state / decoded action
+               (analysis/experiments/openvla_chunked_gate.py), so the accuracy numbers carry over
+               and this is the stream arm's compute (`k1.00`/`total_k1.00`); the interleaved
+               schedule's cost is kept under `interleaved_k1.00`/`interleaved_total_k1.00`.
 
 Backbone = both vision towers + projector + the 32 Llama layers. `lm_head` and `decode_action`'s
 7-token generation are outside (decode excluded, as everywhere else). FLOPs are shape-determined
@@ -99,8 +108,10 @@ def main():
     dev = torch.device(a.device)
     out = {"_meta": {"groups": a.groups, "unit": "GFLOPs/instruction",
                      "note": "backbone prefill only (both towers + projector + 32 Llama layers); "
-                             "decode_action's 7-token generation excluded; frontiers 32x4, sequential "
-                             "grouping, no server pscore filter -- the LIBERO campaign's exact schedule"},
+                             "decode_action's 7-token generation excluded; 4 sequential groups, no "
+                             "server pscore filter. k1.00/total_k1.00 = chunked causal prefill (the "
+                             "stream arm's compute); interleaved_* = the campaign's frontiers-32x4 "
+                             "approx-then-correct schedule (gated equivalent, redundant)"},
            "openvla": {"_samples": None}}
 
     for suite in a.suites:
@@ -146,18 +157,38 @@ def main():
                     tok = pm.vision_correct(px, all_idx, new_idx)
                     pm.llm_correct_segment(len(pm.llm_layers), tok)
 
+        def chunked(fl, px, text):
+            pm.start_session_from_text(text)
+            with fl.arrival(0), fl.stage("approx"):
+                pm.vision_approx(px)
+                pm.llm_chunked_init()
+            arrived = []
+            for g, new in enumerate(groups, start=1):
+                arrived += new
+                all_idx = torch.tensor(arrived, dtype=torch.long, device=dev)
+                new_idx = torch.tensor(new, dtype=torch.long, device=dev)
+                with fl.arrival(g), fl.stage("correct"):
+                    tok = pm.vision_correct(px, all_idx, new_idx)
+                    pm.llm_prefill_segment(tok, include_text=(g == len(groups)))
+
         full_g = run(full)["mean_total_gflops"]
         floor_g = run(approx)["mean_total_gflops"]
-        agg = run(interleaved)
-        crit, tot = agg["mean_critical_gflops"], agg["mean_total_gflops"]
+        agg_i = run(interleaved)
+        agg_c = run(chunked)
+        crit_i, tot_i = agg_i["mean_critical_gflops"], agg_i["mean_total_gflops"]
+        crit_c, tot_c = agg_c["mean_critical_gflops"], agg_c["mean_total_gflops"]
         n_text = int(pm.input_ids.shape[1])
         print(f"\n══ {suite}  (n={len(tasks)}, seq = 1 + {NUM_PATCHES} + {n_text - 1} text) ══")
         print(f"  full inference (ceiling prefill)   {full_g:10.1f} GFLOPs/instruction")
         print(f"  approx only (floor)                {floor_g:10.1f} GFLOPs   floor/full = {100*floor_g/full_g:5.1f}%")
-        print(f"  interleaved g={a.groups} k=1.00      critical {crit:9.1f}  total {tot:9.1f} GFLOPs   "
-              f"critical/full = {100*crit/full_g:5.1f}%   total/full = {100*tot/full_g:5.1f}%")
+        print(f"  chunked g={a.groups} (stream)        critical {crit_c:9.1f}  total {tot_c:9.1f} GFLOPs   "
+              f"critical/full = {100*crit_c/full_g:5.1f}%   total/full = {100*tot_c/full_g:5.1f}%")
+        print(f"  interleaved g={a.groups} k=1.00      critical {crit_i:9.1f}  total {tot_i:9.1f} GFLOPs   "
+              f"critical/full = {100*crit_i/full_g:5.1f}%   total/full = {100*tot_i/full_g:5.1f}%")
         out["openvla"][suite] = {"full": round(full_g, 1), "floor": round(floor_g, 1),
-                                 "k1.00": round(crit, 1), "total_k1.00": round(tot, 1)}
+                                 "k1.00": round(crit_c, 1), "total_k1.00": round(tot_c, 1),
+                                 "interleaved_k1.00": round(crit_i, 1),
+                                 "interleaved_total_k1.00": round(tot_i, 1)}
         out["openvla"]["_samples"] = len(tasks)
         del pm, roots
         torch.cuda.empty_cache()
