@@ -10,8 +10,10 @@ kind=summary line with op timings).
 Arms (offload scheduler `VLAInterleavedStatic`):
 - **full** = ceiling (FULL_INFERENCE, stock model)
 - **approx** = floor (approx-only pass, no correction)
-- **interleaved** = stream: `--frontiers 32,32,32,32 --grouping sequential` (per-group chunked causal
-  prefill, g=4)
+- **interleaved** = stream: `--frontiers 32,32,32,32 --grouping sequential`, g=4. This is
+  approx-then-interleaved-correct, NOT a chunked causal prefill: an approx pass over the full canvas
+  through all 32 layers, then per group (64 patches) a cumulative `vision_correct` over every arrived
+  patch and an `llm_correct_segment` through all 32 layers over the new patches + text.
 
 ## Results (success rate, %)
 
@@ -34,6 +36,24 @@ Per-task successes /50 (task 0..9):
 | Long | 26,37,30,12,25,38,25,34,10,22 | 1,1,1,1,0,8,0,1,0,0 | 21,31,26,16,21,33,19,30,11,19 |
 
 Per-task n=50 gives roughly +-7pp per cell; only suite totals are comparable.
+
+## Backbone compute (GFLOPs/instruction, `analysis/experiments/flops_report_openvla.py`, n=3 instructions)
+
+Both towers + projector + 32 Llama layers; `decode_action`'s 7-token generation excluded. The approx
+pass has the ceiling's shapes, so floor == full. Merged into AppCorr-qwen35-eval's
+`inprocess_flops.json["openvla"]` (side JSON `openvla_libero_flops.json`).
+
+| Suite | Full (ceiling) | Floor | Stream critical | Stream total |
+|---|---|---|---|---|
+| Spatial | 4207.1 | 4207.1 | 1691.2 (40.2%) | 10402.1 (247%) |
+| Object | 4132.0 | 4132.0 | 1616.7 (39.1%) | 10028.9 (243%) |
+| Goal | 4083.4 | 4083.4 | 1568.5 (38.4%) | 9787.6 (240%) |
+| Long | 4158.5 | 4158.5 | 1643.0 (39.5%) | 10160.6 (244%) |
+
+Total is 2.4x the ceiling because the towers are re-run cumulatively per group and each of the 4
+corrections re-traverses all 32 layers over the 64 new patches plus the text (the text is
+re-corrected every round). Critical (= the last group's correction) is ~39%, the same ballpark as
+the VLM streaming rows.
 
 ## Reading
 
